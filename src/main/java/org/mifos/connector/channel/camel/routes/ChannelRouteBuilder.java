@@ -1,42 +1,9 @@
 package org.mifos.connector.channel.camel.routes;
 
-import static java.util.Base64.getEncoder;
-import static java.util.Spliterators.spliteratorUnknownSize;
-import static java.util.stream.StreamSupport.stream;
-import static org.mifos.connector.channel.camel.config.CamelProperties.AUTH_TYPE;
-import static org.mifos.connector.channel.camel.config.CamelProperties.BATCH_ID;
-import static org.mifos.connector.channel.camel.config.CamelProperties.CLIENTCORRELATIONID;
-import static org.mifos.connector.channel.zeebe.ZeebeMessages.OPERATOR_MANUAL_RECOVERY;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.ACCOUNT;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.AMS;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.CHANNEL_REQUEST;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.IS_AUTHORISATION_REQUIRED;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.IS_RTP_REQUEST;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.PARTY_ID;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.PARTY_ID_TYPE;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.TENANT_ID;
-import static org.mifos.connector.channel.zeebe.ZeebeVariables.TRANSACTION_ID;
-import static org.mifos.connector.common.mojaloop.type.InitiatorType.CONSUMER;
-import static org.mifos.connector.common.mojaloop.type.Scenario.TRANSFER;
-import static org.mifos.connector.common.mojaloop.type.TransactionRole.PAYEE;
-import static org.mifos.connector.common.mojaloop.type.TransactionRole.PAYER;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import io.camunda.zeebe.client.ZeebeClient;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Spliterator;
-import javax.net.ssl.HttpsURLConnection;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.component.bean.validator.BeanValidationException;
@@ -74,17 +41,33 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import javax.net.ssl.HttpsURLConnection;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.*;
+
+import static java.util.Base64.getEncoder;
+import static java.util.Spliterators.spliteratorUnknownSize;
+import static java.util.stream.StreamSupport.stream;
+import static org.mifos.connector.channel.camel.config.CamelProperties.*;
+import static org.mifos.connector.channel.zeebe.ZeebeMessages.OPERATOR_MANUAL_RECOVERY;
+import static org.mifos.connector.channel.zeebe.ZeebeVariables.*;
+import static org.mifos.connector.common.mojaloop.type.InitiatorType.CONSUMER;
+import static org.mifos.connector.common.mojaloop.type.Scenario.TRANSFER;
+import static org.mifos.connector.common.mojaloop.type.TransactionRole.PAYEE;
+import static org.mifos.connector.common.mojaloop.type.TransactionRole.PAYER;
+
 @Component
 public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
 
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
-
-    @Autowired
-    private AMSUtils amsUtils;
-
     @Autowired
     TenantImplementationProperties tenantImplementationProperties;
-
+    String destinationDfspId;
+    private Logger logger = LoggerFactory.getLogger(this.getClass());
+    @Autowired
+    private AMSUtils amsUtils;
     private String paymentTransferFlow;
     private String specialPaymentTransferFlow;
     private String transactionRequestFlow;
@@ -105,24 +88,23 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
     private RestTemplate restTemplate;
     private String timer;
     private String restAuthHeader;
-    String destinationDfspId;
 
     public ChannelRouteBuilder(@Value("#{'${dfspids}'.split(',')}") List<String> dfspIds,
-            @Value("${bpmn.flows.payment-transfer}") String paymentTransferFlow,
-            @Value("${bpmn.flows.special-payment-transfer}") String specialPaymentTransferFlow,
-            @Value("${bpmn.flows.transaction-request}") String transactionRequestFlow,
-            @Value("${bpmn.flows.party-registration}") String partyRegistration,
-            @Value("${bpmn.flows.inboundTransactionReq-flow}") String inboundTransactionReqFlow,
-            @Value("${rest.authorization.host}") String restAuthHost, @Value("${operations.url}") String operationsUrl,
-            @Value("${operations.auth-enabled}") Boolean operationsAuthEnabled,
-            @Value("${operations.endpoint.transfers}") String transfersEndpoint,
-            @Value("${operations.endpoint.transactionReq}") String transactionEndpoint,
-            @Value("${mpesa.notification.success.enabled}") Boolean isNotificationSuccessServiceEnabled,
-            @Value("${mpesa.notification.failure.enabled}") Boolean isNotificationFailureServiceEnabled, @Value("${timer}") String timer,
-            @Value("${rest.authorization.header}") String restAuthHeader, @Value("${destination.dfspid}") String destinationDfspId,
-            ZeebeClient zeebeClient, ZeebeProcessStarter zeebeProcessStarter, @Autowired(required = false) AuthProcessor authProcessor,
-            @Autowired(required = false) AuthProperties authProperties, ObjectMapper objectMapper, ClientProperties clientProperties,
-            RestTemplate restTemplate) {
+                               @Value("${bpmn.flows.payment-transfer}") String paymentTransferFlow,
+                               @Value("${bpmn.flows.special-payment-transfer}") String specialPaymentTransferFlow,
+                               @Value("${bpmn.flows.transaction-request}") String transactionRequestFlow,
+                               @Value("${bpmn.flows.party-registration}") String partyRegistration,
+                               @Value("${bpmn.flows.inboundTransactionReq-flow}") String inboundTransactionReqFlow,
+                               @Value("${rest.authorization.host}") String restAuthHost, @Value("${operations.url}") String operationsUrl,
+                               @Value("${operations.auth-enabled}") Boolean operationsAuthEnabled,
+                               @Value("${operations.endpoint.transfers}") String transfersEndpoint,
+                               @Value("${operations.endpoint.transactionReq}") String transactionEndpoint,
+                               @Value("${mpesa.notification.success.enabled}") Boolean isNotificationSuccessServiceEnabled,
+                               @Value("${mpesa.notification.failure.enabled}") Boolean isNotificationFailureServiceEnabled, @Value("${timer}") String timer,
+                               @Value("${rest.authorization.header}") String restAuthHeader, @Value("${destination.dfspid}") String destinationDfspId,
+                               ZeebeClient zeebeClient, ZeebeProcessStarter zeebeProcessStarter, @Autowired(required = false) AuthProcessor authProcessor,
+                               @Autowired(required = false) AuthProperties authProperties, ObjectMapper objectMapper, ClientProperties clientProperties,
+                               RestTemplate restTemplate) {
         super(authProcessor, authProperties);
         super.configure();
         this.paymentTransferFlow = paymentTransferFlow;
@@ -328,7 +310,7 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     extraVariables.put("clientCorrelationId", clientCorrelationId);
                     extraVariables.put("initiatorFspId", channelRequest.getPayer().getPartyIdInfo().getFspId());
                     String tenantSpecificBpmn;
-                    String bpmn = getWorkflowForTenant(tenantId);
+                    String bpmn = getWorkflowForTenant(tenantId, "payment-transfer");
                     if (channelRequest.getPayer().getPartyIdInfo().getPartyIdentifier().startsWith("6666")) {
                         tenantSpecificBpmn = bpmn.equals("default") ? specialPaymentTransferFlow.replace("{dfspid}", tenantId)
                                 : bpmn.replace("{dfspid}", tenantId);
@@ -369,10 +351,10 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
     private void collectionRoutes() {
         from("direct:post-collection").id("inboundTransactionReqFlow-payment-request")
                 .log(LoggingLevel.INFO, "## CHANNEL -> MPESA transaction request").to("bean-validator:request") // todo
-                                                                                                                // revisit
-                                                                                                                // function
-                                                                                                                // is
-                                                                                                                // breaking
+                // revisit
+                // function
+                // is
+                // breaking
                 .process(exchange -> {
 
                     amsUtils.postConstruct();
@@ -432,7 +414,11 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
 
                     logger.info("Final Value for ams : " + finalAmsVal);
                     extraVariables.put(AMS, finalAmsVal);
-                    tenantSpecificBpmn = inboundTransactionReqFlow.replace("{dfspid}", tenantId).replace("{ams}", finalAmsVal);
+                    String bpmn = getWorkflowForTenant(tenantId, "outbound-transfer-request");
+                    if (bpmn.equals("default")) {
+                        bpmn = inboundTransactionReqFlow;
+                    }
+                    tenantSpecificBpmn = bpmn.replace("{dfspid}", tenantId).replace("{ams}", finalAmsVal);
 
                     String amount = body.getJSONObject("amount").getString("amount");
 
@@ -458,10 +444,10 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
         from("direct:post-transaction-request").id("inbound-payment-request")
                 .log(LoggingLevel.INFO, "## CHANNEL -> PAYEE inbound transaction request").unmarshal()
                 .json(JsonLibrary.Jackson, TransactionChannelRequestDTO.class).to("bean-validator:request")// todo
-                                                                                                           // revisit
-                                                                                                           // function
-                                                                                                           // is
-                                                                                                           // breaking
+                // revisit
+                // function
+                // is
+                // breaking
                 .process(exchange -> {
                     Map<String, Object> extraVariables = new HashMap<>();
                     TransactionType transactionType = new TransactionType();
@@ -599,22 +585,22 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
 
     private void inboundTransferC2bImplementationRoutes() {
         from("direct:post-validation-ams").id("validation-ams").log(LoggingLevel.INFO, "Validation Check").process(e -> {
-            String paybillRequestBodyString = e.getIn().getBody(String.class);
-            logger.debug("Payload : {}", paybillRequestBodyString);
-            JSONObject body = new JSONObject(paybillRequestBodyString);
-            String amsURL = e.getIn().getHeader("amsUrl").toString();
-            String finalAmsVal = e.getIn().getHeader("amsName").toString();
-            String accountHoldingInstitutionId = e.getIn().getHeader("accountHoldingInstitutionId").toString();
-            logger.debug("Final Value for ams : " + finalAmsVal);
-            logger.debug("AMS URL : {}", amsURL);
-            logger.debug("accountHoldingInstitutionId: {}", accountHoldingInstitutionId);
-            e.getIn().setBody(body.toString());
-            e.setProperty("amsURL", amsURL);
-            e.setProperty("finalAmsVal", finalAmsVal);
-            e.getIn().removeHeaders("*");
-            e.getIn().setHeader("accountHoldingInstitutionId", accountHoldingInstitutionId);
-            logger.debug("Header:{}", e.getIn().getHeaders());
-        }).log("${header.amsURL},${header.finalAmsVal}")
+                    String paybillRequestBodyString = e.getIn().getBody(String.class);
+                    logger.debug("Payload : {}", paybillRequestBodyString);
+                    JSONObject body = new JSONObject(paybillRequestBodyString);
+                    String amsURL = e.getIn().getHeader("amsUrl").toString();
+                    String finalAmsVal = e.getIn().getHeader("amsName").toString();
+                    String accountHoldingInstitutionId = e.getIn().getHeader("accountHoldingInstitutionId").toString();
+                    logger.debug("Final Value for ams : " + finalAmsVal);
+                    logger.debug("AMS URL : {}", amsURL);
+                    logger.debug("accountHoldingInstitutionId: {}", accountHoldingInstitutionId);
+                    e.getIn().setBody(body.toString());
+                    e.setProperty("amsURL", amsURL);
+                    e.setProperty("finalAmsVal", finalAmsVal);
+                    e.getIn().removeHeaders("*");
+                    e.getIn().setHeader("accountHoldingInstitutionId", accountHoldingInstitutionId);
+                    logger.debug("Header:{}", e.getIn().getHeaders());
+                }).log("${header.amsURL},${header.finalAmsVal}")
                 .toD("${header.amsURL}" + "/api/v1/paybill/validate/" + "${header.finalAmsVal}" + "?bridgeEndpoint=true")
                 .id("ams-validation-response").unmarshal().json(JsonLibrary.Jackson, ValidationResponseDTO.class)
                 .log(LoggingLevel.INFO, "## AMS Validation response DTO").setBody(e -> {
@@ -704,11 +690,11 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
         return entity;
     }
 
-    public String getWorkflowForTenant(String tenantId) {
+    public String getWorkflowForTenant(String tenantId, String useCase) {
 
         for (TenantImplementation tenant : tenantImplementationProperties.getTenants()) {
             if (tenant.getId().equals(tenantId)) {
-                return tenant.getFlows().get("payment-transfer");
+                return tenant.getFlows().get(useCase);
             }
         }
         return "default";
