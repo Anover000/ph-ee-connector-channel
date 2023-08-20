@@ -328,7 +328,7 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     extraVariables.put("clientCorrelationId", clientCorrelationId);
                     extraVariables.put("initiatorFspId", channelRequest.getPayer().getPartyIdInfo().getFspId());
                     String tenantSpecificBpmn;
-                    String bpmn = getWorkflowForTenant(tenantId);
+                    String bpmn = getWorkflowForTenant(tenantId, "payment-transfer");
                     if (channelRequest.getPayer().getPartyIdInfo().getPartyIdentifier().startsWith("6666")) {
                         tenantSpecificBpmn = bpmn.equals("default") ? specialPaymentTransferFlow.replace("{dfspid}", tenantId)
                                 : bpmn.replace("{dfspid}", tenantId);
@@ -432,7 +432,11 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
 
                     logger.info("Final Value for ams : " + finalAmsVal);
                     extraVariables.put(AMS, finalAmsVal);
-                    tenantSpecificBpmn = inboundTransactionReqFlow.replace("{dfspid}", tenantId).replace("{ams}", finalAmsVal);
+                    String bpmn = getWorkflowForTenant(tenantId, "outbound-transfer-request");
+                    if (bpmn.equals("default")) {
+                        bpmn = inboundTransactionReqFlow;
+                    }
+                    tenantSpecificBpmn = bpmn.replace("{dfspid}", tenantId).replace("{ams}", finalAmsVal);
 
                     String amount = body.getJSONObject("amount").getString("amount");
 
@@ -704,11 +708,11 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
         return entity;
     }
 
-    public String getWorkflowForTenant(String tenantId) {
+    public String getWorkflowForTenant(String tenantId, String useCase) {
 
         for (TenantImplementation tenant : tenantImplementationProperties.getTenants()) {
             if (tenant.getId().equals(tenantId)) {
-                return tenant.getFlows().get("payment-transfer");
+                return tenant.getFlows().get(useCase);
             }
         }
         return "default";

@@ -9,3 +9,4 @@ bpmns:
     - id: "gorilla"
       flows:
         payment-transfer: "PayerFundTransfer-{dfspid}"
+        outbound-transfer-request: "mpesa_flow_{ams}-{dfspid}"
