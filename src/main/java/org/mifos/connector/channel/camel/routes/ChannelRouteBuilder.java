@@ -327,10 +327,9 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     transactionType.setInitiatorType(CONSUMER);
                     transactionType.setScenario(TRANSFER);
                     channelRequest.setTransactionType(transactionType);
-                    if(payeeDfspId == null) {
+                    if (payeeDfspId == null) {
                         channelRequest.getPayer().getPartyIdInfo().setFspId(destinationDfspId);
-                    }
-                    else {
+                    } else {
                         channelRequest.getPayer().getPartyIdInfo().setFspId(payeeDfspId);
                     }
                     String customDataString = String.valueOf(channelRequest.getCustomData());
