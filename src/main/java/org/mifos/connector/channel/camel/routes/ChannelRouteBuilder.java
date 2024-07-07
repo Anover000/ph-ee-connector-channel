@@ -327,10 +327,11 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     transactionType.setInitiatorType(CONSUMER);
                     transactionType.setScenario(TRANSFER);
                     channelRequest.setTransactionType(transactionType);
+                    channelRequest.getPayer().getPartyIdInfo().setFspId(tenantId);
                     if (payeeDfspId == null) {
-                        channelRequest.getPayer().getPartyIdInfo().setFspId(destinationDfspId);
+                        channelRequest.getPayee().getPartyIdInfo().setFspId(destinationDfspId);
                     } else {
-                        channelRequest.getPayer().getPartyIdInfo().setFspId(payeeDfspId);
+                        channelRequest.getPayee().getPartyIdInfo().setFspId(payeeDfspId);
                     }
                     String customDataString = String.valueOf(channelRequest.getCustomData());
                     String currency = channelRequest.getAmount().getCurrency();
@@ -344,6 +345,7 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                             new FspMoneyData(channelRequest.getAmount().getAmountDecimal(), channelRequest.getAmount().getCurrency()));
                     extraVariables.put("clientCorrelationId", clientCorrelationId);
                     extraVariables.put("initiatorFspId", channelRequest.getPayer().getPartyIdInfo().getFspId());
+                    extraVariables.put("destinationFspId", channelRequest.getPayee().getPartyIdInfo().getFspId());
                     String tenantSpecificBpmn;
                     String bpmn = getWorkflowForTenant(tenantId, "payment-transfer");
                     if (channelRequest.getPayer().getPartyIdInfo().getPartyIdentifier().startsWith("6666")) {
