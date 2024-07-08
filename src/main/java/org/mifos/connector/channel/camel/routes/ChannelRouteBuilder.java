@@ -315,7 +315,7 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     String payeeDfspId = exchange.getIn().getHeader(PAYEE_DFSP_ID, String.class);
                     String registeringInstitutionId = exchange.getIn().getHeader("X-Registering-Institution-ID", String.class);
                     String clientCorrelationId = exchange.getIn().getHeader("X-CorrelationID", String.class);
-                    logger.info("## CHANNEL Client Correlation Id: " + clientCorrelationId);
+                    logger.info("## CHANNEL Client Correlation Id: {}", clientCorrelationId);
                     if (tenantId == null || !dfspIds.contains(tenantId)) {
                         throw new RuntimeException("Requested tenant " + tenantId + " not configured in the connector!");
                     }
@@ -329,7 +329,7 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     transactionType.setScenario(TRANSFER);
                     channelRequest.setTransactionType(transactionType);
                     channelRequest.getPayer().getPartyIdInfo().setFspId(tenantId);
-                    if (payeeDfspId == null) {
+                    if (payeeDfspId == null || payeeDfspId.isBlank()) {
                         channelRequest.getPayee().getPartyIdInfo().setFspId(destinationDfspId);
                     } else {
                         channelRequest.getPayee().getPartyIdInfo().setFspId(payeeDfspId);
